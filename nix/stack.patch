@@ -1,0 +1,69 @@
+--- a/src/Stack/Types/EnvConfig.hs
++++ b/src/Stack/Types/EnvConfig.hs
+@@ -49,6 +49,7 @@
+                    , relDirCompilerTools, relDirHoogle, relDirHpc, relDirInstall
+                    , relDirPkgdb, relDirSnapshots, relFileDatabaseHoo
+                    )
++import           System.Environment ( lookupEnv )
+ import           Stack.Prelude
+ import           Stack.Types.BuildConfig
+                     ( BuildConfig (..), HasBuildConfig (..), getWorkDir )
+@@ -157,9 +158,13 @@
+ -- | Installation root for dependencies.
+ installationRootDeps :: HasEnvConfig env => RIO env (Path Abs Dir)
+ installationRootDeps = do
+-  root <- view stackRootL
+-  psc <- platformSnapAndCompilerRel
+-  pure $ root </> relDirSnapshots </> psc
++  selected <- liftIO $ lookupEnv "STACK_PURIFIER_INSTALL_ROOT"
++  case selected of
++    Just dir -> parseAbsDir dir
++    Nothing -> do
++      root <- view stackRootL
++      psc <- platformSnapAndCompilerRel
++      pure $ root </> relDirSnapshots </> psc
+ 
+ -- | Installation root for locals.
+ installationRootLocal :: HasEnvConfig env => RIO env (Path Abs Dir)
+--- a/src/Stack/DependencyGraph.hs
++++ b/src/Stack/DependencyGraph.hs
+@@ -18,6 +18,9 @@
+   , pruneGraph
+   ) where
+ 
++import           Data.Aeson ( encodeFile, object, (.=) )
++import           Distribution.Pretty ( prettyShow )
++import           System.Environment ( lookupEnv )
+ import qualified Data.Foldable as F
+ import qualified Data.Set as Set
+ import qualified Data.Map as Map
+@@ -58,7 +58,7 @@
+ import           Stack.Types.Package ( LocalPackage (..) )
+ import           Stack.Types.Runner ( Runner, globalOptsL )
+ import           Stack.Types.SourceMap
+-                   ( CommonPackage (..), DepPackage (..), ProjectPackage (..)
++                   ( CommonPackage (..), DepPackage (..), FromSnapshot (..), ProjectPackage (..)
+                    , SMActual (..), SMWanted (..), SourceMap (..)
+                    )
+ 
+@@ -122,6 +125,20 @@
+                       else Set.insert "base" dotOpts.prune
+       prunedGraph = pruneGraph localNames pkgsToPrune resultGraph
+   logDebug "Returning pruned dependency graph"
++  capture <- liftIO $ lookupEnv "STACK_PURIFIER_CAPTURE"
++  forM_ capture $ \path -> do
++    sourceMap <- view sourceMapL
++    let selected = Map.filterWithKey (\name _ -> Map.member name prunedGraph) sourceMap.deps
++        captureDep (name, dep) = object
++          [ "name" .= packageNameString name
++          , "location" .= toRawPL dep.location
++          , "flags" .= Map.mapKeys prettyShow dep.depCommon.flags
++          , "ghcOptions" .= dep.depCommon.ghcOptions
++          , "cabalConfigOpts" .= dep.depCommon.cabalConfigOpts
++          , "hidden" .= dep.hidden
++          , "fromSnapshot" .= (case dep.fromSnapshot of FromSnapshot -> True; NotFromSnapshot -> False)
++          ]
++    liftIO $ encodeFile path $ map captureDep (Map.toList selected)
+   pure (compiler, localNames, prunedGraph)
+ 
+ -- Plumbing for --test and --bench flags

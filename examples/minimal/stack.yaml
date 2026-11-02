@@ -1,0 +1,5 @@
+resolver: ghc-9.10.3
+packages: [.]
+extra-deps: [split-0.2.5]
+system-ghc: true
+install-ghc: false

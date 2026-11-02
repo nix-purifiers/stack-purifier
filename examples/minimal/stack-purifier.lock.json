@@ -1,5 +1,5 @@
 {
-  "contentHash": "e18f5cc560fd4623a2a1d327d022c1a530115c1a5a4414943f6e7cab9ae6178d",
+  "contentHash": "199b92537e8efc23de94ba48e7d36120f509f80ceb539f35a06945f0f4a3bf99",
   "inputs": [
     {
       "hash": "2766e86deb88f60851e23258c219bc0acfc58a8caa6f6ddf56b3512959f3627a",
@@ -59,7 +59,7 @@
       "system": "x86_64-linux",
       "toolVersions": {
         "ghc": "9.10.3",
-        "resolver": "7a28030fed517467b7f3097038dcadd9cf7fd33b0f3795470f9f8b66eadd22d6",
+        "resolver": "9481ba966daab1536d65e29dd06a34fab7db21cedda0f3c773d6d22bd158e211",
         "stack": "3.9.3"
       }
     }

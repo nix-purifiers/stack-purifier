@@ -117,6 +117,14 @@ def resolve(root, native, companion, update=False, names=()):
         env.update(
             STACK_ROOT=str(cache), STACK_PURIFIER_CAPTURE=str(temp / "capture.json")
         )
+        # Completed Pantry locations can be satisfied through Casa without ever
+        # importing Hackage's security index. Archive hashes and revision URLs
+        # must still come from that authenticated native index.
+        if not (cache / "pantry/hackage/00-index.tar").is_file():
+            run(
+                [NATIVE, "--stack-yaml", stage / "stack.yaml", "--no-nix", "update"],
+                env=env,
+            )
         if update:
             run(
                 [NATIVE, "--stack-yaml", stage / "stack.yaml", "--no-nix", "update"],

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Native graph resolution, offline development, external pins and source releases."""
 
-import json, os, shutil, subprocess, sys, tempfile, tarfile
+import json, os, shutil, subprocess, sys, tempfile, tarfile, time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -19,13 +19,24 @@ def run(args, **kwargs):
     return result
 
 
+def acquire(attribute, destination):
+    started = time.monotonic()
+    print(f"SDK acquisition start: {attribute}", flush=True)
+    try:
+        run(["nix", "build", "-L", str(REPO) + "#" + attribute,
+             "--out-link", destination])
+    finally:
+        elapsed = time.monotonic() - started
+        print(f"SDK acquisition ended: {attribute}; elapsed={elapsed:.1f}s", flush=True)
+
+
 case = sys.argv[1]
 with tempfile.TemporaryDirectory(prefix="stack-conformance-") as temporary:
     temp = Path(temporary)
     cli = temp / "cli"
     native = temp / "sdk"
-    run(["nix", "build", str(REPO) + "#cli", "--out-link", cli])
-    run(["nix", "build", str(REPO) + "#native", "--out-link", native])
+    acquire("cli", cli)
+    acquire("native", native)
     helper = cli / "bin/stack-purifier"
     stack = cli / "bin/stack"
     raw = native / "bin/stack"

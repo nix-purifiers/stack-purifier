@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 {
   lib,
+  callPackage,
   runCommand,
   fetchurl,
   python3,
@@ -18,6 +19,7 @@
   stackLock ? src + "/stack.yaml.lock",
   fetchers ? { },
   nativeBuildInputs ? [ ],
+  nativeProducts ? { },
   buildCommand ? ''
     stack --no-nix --stack-yaml "$PWD/session/stack.yaml" build --test --bench --no-run-benchmarks
     stack --no-nix --stack-yaml "$PWD/session/stack.yaml" build --copy-bins --local-bin-path "$out/bin"
@@ -65,7 +67,7 @@ let
     data=configuration(yaml.safe_load((root/'stack.yaml').read_text()),env,[str(root/p) for p in profile['projects']])
     (session/'stack.yaml').write_text(json.dumps(data))
   '';
-  project =
+  rawProject =
     runCommand "purified-stack-project"
       {
         nativeBuildInputs = [
@@ -83,6 +85,19 @@ let
         python ${configure} ${environment}
         ${buildCommand}
       '';
+  native = callPackage ./build-native-products.nix { inherit purifier toolchain; } {
+    inherit
+      nativeProducts
+      source
+      environment
+      nativeBuildInputs
+      ;
+    profile = lock.data.profiles.${stdenv.hostPlatform.system};
+  };
+  projections = if nativeProducts == { } then { } else native.projections;
+  project = rawProject // {
+    inherit projections;
+  };
   release =
     runCommand "stack-project-release"
       {
@@ -100,11 +115,14 @@ let
         tar --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner -C source -cf - . | gzip -n > "$out/project.tar.gz"
       '';
 in
+assert nativeProducts == { } || native.validated;
 {
+  projections = projections;
   packages = {
     inherit environment project;
     default = project;
-  };
+  }
+  // lib.optionalAttrs (nativeProducts != { }) { native = native.producer; };
   tests = project;
   inherit release;
   fetches = lock.entries;

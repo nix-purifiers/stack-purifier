@@ -25,6 +25,7 @@ jobs:
       - run: python3 tests/eval-errors.py
       - run: nix flake check -L
       - run: tests/conformance-rebuild.sh
+      - run: python3 tests/native-capture.py
   conformance:
     name: conformance-${{ matrix.case }} (${{ matrix.runner }})
     strategy:

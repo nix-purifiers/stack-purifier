@@ -1,0 +1,16 @@
+cabal-version: 3.0
+name: stack-foreign-proof
+version: 0.1.0
+build-type: Simple
+license: MIT
+foreign-library answer
+  type: native-shared
+  other-modules: Answer
+  hs-source-dirs: src
+  include-dirs: include
+  includes: answer.h
+  install-includes: answer.h
+  c-sources: csrc/runtime.c
+  build-depends: base ==4.20.2.0, purifier-local-answer ==0.1.0
+  default-language: Haskell2010
+  ghc-options: -O0

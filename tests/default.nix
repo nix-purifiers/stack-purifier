@@ -9,3 +9,11 @@ in
   project = built.tests;
   release = built.release;
 }
+//
+  pkgs.lib.optionalAttrs
+    (builtins.hasAttr pkgs.stdenv.hostPlatform.system (builtins.fromJSON (
+      builtins.readFile ./fixtures/foreign-library/stack-purifier.lock.json
+    )).profiles)
+    {
+      native-products = import ./native-products.nix { inherit pkgs; };
+    }

@@ -176,14 +176,28 @@ def resolve(root, native, companion, update=False, names=()):
             ).stdout
         )
         captured = json.loads((temp / "capture.json").read_text())
+        # Native Stack's dependency graph can omit a project containing only a
+        # foreign library. Its native local-package query still owns that root.
+        locals_env = dict(env)
+        locals_env.pop("STACK_PURIFIER_CAPTURE", None)
+        local_packages = yaml.safe_load(run([
+            NATIVE, "--stack-yaml", stage / "stack.yaml", "--no-nix",
+            "--system-ghc", "--no-install-ghc", "query", "locals",
+        ], env=locals_env, capture_output=True).stdout)
+        if not isinstance(local_packages, dict):
+            raise ValueError("invalid native Stack local-package query")
+        local_nodes = [{"location": {"type": "project package", "url": "file://" + value["path"]}}
+                       for value in local_packages.values()]
         projects = []
         paths = ["stack.yaml"]
-        for node in graph:
+        for node in graph + local_nodes:
             location = node.get("location", {})
             if location.get("type") == "project package":
                 local = Path(location["url"].removeprefix("file://")).resolve()
                 relative = local.relative_to(stage)
                 name = str(relative)
+                if name in projects:
+                    continue
                 projects.append(name)
                 files = list(local.glob("*.cabal"))
                 if not files:

@@ -83,6 +83,56 @@ builds/tests the project and installs its executables. `lockFile`,
 customize the build. Output names are available during evaluation without
 building dependencies.
 
+### C ABI libraries for Python and Java
+
+A Cabal `foreign-library` built by native Stack can be selected explicitly:
+
+```nix
+pkgs.stack-purifier.buildStackProject {
+  src = ./.;
+  nativeProducts.answer = {
+    selector = "my-package:flib:answer";
+    abi = "c";
+    exports = [ "purifier_answer" "purifier_init" "purifier_term" ];
+    runtime = {
+      kind = "ghc";
+      lifecycle = "process-once";
+      threading = "single-foreign-thread";
+      init = "purifier_init";
+      term = "purifier_term";
+    };
+  };
+}
+```
+
+This adds `packages.native` and `projections.native`, `projections.python-ffi`
+and `projections.java-ffi`. Python's `purifier_native.load("answer")` loads the
+selected library; Java's projection supplies `java.args` for the native library
+path. CFFI can open the library recorded in the native projection catalog.
+The native output includes the declared installed C headers and matching GHC
+`HsFFI.h`. `native-products.json` records native component ownership, compiler,
+installed library hashes and resolved Haskell runtime dependencies.
+
+The library must provide its declared initialization and termination functions.
+Initialize once, call from one foreign thread, then terminate once before the
+process exits. Never reinitialize the GHC runtime, call after termination, or
+mix these libraries with a different GHC runtime in one process. Keep the native
+Nix closure available; these projections do not make a portable standalone DLL.
+
+The initial contract supports one unversioned shared foreign library on native
+Linux with `Simple` local Cabal packages. Declare its public headers with Cabal `install-includes`. Stack's own
+configured Cabal component and installer determine its files and dependencies.
+Ordinary Haskell libraries, executables, static archives and runtime plugins do
+not become C ABI libraries automatically. Cross compilation is rejected.
+
+Native Stack's dependency listing can omit dependencies used exclusively by a
+foreign-library-only package. Keep non-SDK dependencies in an ordinary local
+Haskell library used by the foreign component, so native Stack captures their
+graph (as in `tests/fixtures/foreign-library`). The actual native local-package
+query captures the foreign component's root and Cabal manifest. Capture each
+platform profile with `stack-purifier lock`; CI captures and tests both Linux
+architectures independently.
+
 ## Releases
 
 ```sh

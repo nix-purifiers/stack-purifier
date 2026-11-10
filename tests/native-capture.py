@@ -32,4 +32,10 @@ with tempfile.TemporaryDirectory(prefix='stack-native-capture-') as temporary:
         result=subprocess.run(['nix','build','--impure','--no-link','--expr',negative],text=True,capture_output=True)
         assert result.returncode and error in result.stderr,result
         print(result.stderr)
-    print(json.dumps(dict(system=system,projects=profile['projects'],consumerOutput=output)))
+    receipt=dict(system=system,projects=profile['projects'],consumerOutput=output)
+    if os.environ.get('STACK_NATIVE_CAPTURE_EVIDENCE'):
+        evidence=Path(os.environ['STACK_NATIVE_CAPTURE_EVIDENCE']);evidence.mkdir(parents=True,exist_ok=True)
+        for name in ['stack.yaml','stack.yaml.lock','stack-purifier.lock.json','stack-foreign-proof.cabal','sibling/purifier-local-answer.cabal']:
+            destination=evidence/name;destination.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src/name,destination)
+        (evidence/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+    print(json.dumps(receipt))

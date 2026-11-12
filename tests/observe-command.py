@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import select
+import stat
 import sys
 import time
 
@@ -12,6 +13,8 @@ PREFIX = "[stack-ci-observe] "
 MAX_PROCESSES = 32
 MAX_LINE_BYTES = 4096
 TOOLS = ("Setup", "haddock", "ghc", "nix")
+_OBSERVER_PROCESS = False
+_OUTPUT_FD = None
 
 
 def read(path, limit=512):
@@ -19,6 +22,20 @@ def read(path, limit=512):
         return path.read_text()[:limit].strip()
     except (OSError, UnicodeError):
         return None
+
+
+def nonblocking_output():
+    """Reopen, never dup/change flags on the command's shared stderr."""
+    try:
+        descriptor = os.open("/proc/self/fd/2", os.O_WRONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError:
+        return None
+    if not stat.S_ISFIFO(os.fstat(descriptor).st_mode):
+        # O_NONBLOCK does not bound regular-file I/O. Hosted CI uses a pipe;
+        # other sinks simply disable best-effort observer output.
+        os.close(descriptor)
+        return None
+    return descriptor
 
 
 def emit(event):
@@ -29,10 +46,16 @@ def emit(event):
         line = PREFIX + json.dumps(event, separators=(",", ":")) + "\n"
     if len(line.encode()) > MAX_LINE_BYTES:
         line = PREFIX + json.dumps({"event": "sample-too-large"}) + "\n"
+    descriptor = _OUTPUT_FD if _OBSERVER_PROCESS else nonblocking_output()
+    if descriptor is None:
+        return
     try:
-        os.write(2, line.encode())
+        os.write(descriptor, line.encode())
     except OSError:
-        pass
+        pass  # Drop diagnostics under backpressure; never wait on the sink.
+    finally:
+        if not _OBSERVER_PROCESS:
+            os.close(descriptor)
 
 
 def processes(target):
@@ -110,6 +133,7 @@ def observe(pidfd, target, interval, limit):
 
 
 def main():
+    global _OBSERVER_PROCESS, _OUTPUT_FD
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--interval-seconds", type=float, default=60)
     parser.add_argument("--max-samples", type=int, default=120)
@@ -139,14 +163,23 @@ def main():
                 # does not inherit an observer child that it might reap.
                 if os.fork() != 0:
                     os._exit(0)
-                try:
-                    os.close(0)
-                except OSError:
-                    pass
-                observe(pidfd, target, args.interval_seconds, args.max_samples)
+                _OBSERVER_PROCESS = True
+                _OUTPUT_FD = nonblocking_output()
+                # Do not retain command stdin/stdout/stderr pipe references.
+                for descriptor in (0, 1, 2):
+                    if descriptor in (pidfd, _OUTPUT_FD):
+                        continue
+                    try:
+                        os.close(descriptor)
+                    except OSError:
+                        pass
+                if _OUTPUT_FD is not None:
+                    observe(pidfd, target, args.interval_seconds, args.max_samples)
             except BaseException as error:
                 emit({"event": "observer-error", "error": str(error)[:256]})
             finally:
+                if _OUTPUT_FD is not None:
+                    os.close(_OUTPUT_FD)
                 os.close(pidfd)
                 os._exit(0)
         try:

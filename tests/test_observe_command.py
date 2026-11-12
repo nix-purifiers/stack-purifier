@@ -1,5 +1,6 @@
 """Owned synthetic commands only: no Stack build or job controls."""
 import importlib.util
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -87,8 +88,16 @@ class Lifecycle(unittest.TestCase):
             observer = next(e["observer_pid"] for e in events
                             if e["event"] == "observer-start")
             status = Path(f"/proc/{observer}/stat")
-            if status.exists():
-                self.assertEqual(status.read_text().split(") ", 1)[1][0], "Z")
+            deadline = time.monotonic() + .5
+            while status.exists():
+                try:
+                    state = status.read_text().split(") ", 1)[1][0]
+                except FileNotFoundError:
+                    break
+                if state == "Z":
+                    break
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(.005)
         finally:
             if p.poll() is None:
                 p.terminate()
@@ -118,6 +127,63 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(q.returncode, 127)
         self.assertIn("/no/such/command", target_stderr(q.stderr))
 
+    def test_saturated_stderr_does_not_hold_stdout_or_sampler_lifetime(self):
+        read_fd, write_fd = os.pipe()
+        original_flags = fcntl.fcntl(write_fd, fcntl.F_GETFL)
+        fcntl.fcntl(write_fd, fcntl.F_SETFL, original_flags | os.O_NONBLOCK)
+        try:
+            while True:
+                os.write(write_fd, b"x" * 4096)
+        except BlockingIOError:
+            pass
+        fcntl.fcntl(write_fd, fcntl.F_SETFL, original_flags)
+        with tempfile.TemporaryDirectory() as unique:
+            token = str(Path(unique) / "owned-observer-token")
+            command = ("import fcntl,os,time; time.sleep(.08); "
+                       "assert not fcntl.fcntl(2,fcntl.F_GETFL)&os.O_NONBLOCK; "
+                       "print('done',flush=True)")
+            p = subprocess.Popen(
+                [sys.executable, str(SCRIPT), "--interval-seconds", ".01",
+                 "--max-samples", "1", "--", sys.executable, "-c", command, token],
+                stdout=subprocess.PIPE, stderr=write_fd, text=True)
+            try:
+                p.wait(timeout=3)
+                self.assertEqual(p.returncode, 0)
+                # stdout must reach EOF even though stderr is never drained.
+                stdout, _ = p.communicate(timeout=.25)
+                self.assertEqual(stdout, "done\n")
+                self.assertEqual(fcntl.fcntl(write_fd, fcntl.F_GETFL), original_flags)
+                deadline = time.monotonic() + .5
+                while True:
+                    active = []
+                    for proc in Path("/proc").iterdir():
+                        if not proc.name.isdigit():
+                            continue
+                        try:
+                            argv = (proc / "cmdline").read_bytes()
+                            if token.encode() in argv and str(SCRIPT).encode() in argv:
+                                state = (proc / "stat").read_text().split(") ", 1)[1][0]
+                                if state != "Z":
+                                    active.append(int(proc.name))
+                        except (OSError, IndexError):
+                            pass
+                    if not active or time.monotonic() >= deadline:
+                        break
+                    time.sleep(.01)
+                self.assertEqual(active, [])
+            finally:
+                # Release only this test's saturated pipe, including when
+                # exercising the known-bad revision; never signal a sampler.
+                os.set_blocking(read_fd, False)
+                try:
+                    while os.read(read_fd, 65536):
+                        pass
+                except BlockingIOError:
+                    pass
+                os.close(write_fd)
+                p.communicate(timeout=3)
+                os.close(read_fd)
+
     def test_observer_unavailable_does_not_replace_command_failure(self):
         bootstrap = ("import os,runpy,sys; "
                      "script=sys.argv[1]; sys.argv=sys.argv[1:]; "
@@ -135,7 +201,9 @@ class Lifecycle(unittest.TestCase):
         spec.loader.exec_module(module)
         event = {"event": "sample", "processes_omitted": 0,
                  "processes": [{"name": "x" * 1000} for _ in range(32)]}
-        with patch.object(module.os, "write") as write:
+        with patch.object(module, "_OBSERVER_PROCESS", True), \
+                patch.object(module, "_OUTPUT_FD", 123), \
+                patch.object(module.os, "write") as write:
             module.emit(event)
         payload = write.call_args.args[1]
         self.assertLessEqual(len(payload), 4096)

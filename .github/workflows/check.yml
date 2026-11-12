@@ -23,7 +23,8 @@ jobs:
             examples/minimal/stack.yaml.lock
             examples/minimal/stack-purifier.lock.json
       - run: python3 tests/eval-errors.py
-      - run: nix flake check -L
+      - run: python3 -m unittest discover -s tests -p test_observe_command.py -v
+      - run: python3 tests/observe-command.py -- nix flake check -L
       - run: tests/conformance-rebuild.sh
       - run: python3 tests/native-capture.py
   conformance:

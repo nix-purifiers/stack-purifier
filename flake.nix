@@ -22,11 +22,11 @@
         stack-purifier = final.lib.makeScope final.newScope (scope: {
           nativeStack = scope.callPackage ./nix/stack.nix { };
           toolchain = scope.callPackage ./nix/toolchain.nix { };
-          cli = scope.callPackage ./nix/cli.nix {
+          cli = scope.callPackage ./pkgs/stack-purifier/default.nix {
             nixpkgsSrc = nixpkgs;
             purifierSrc = purifier;
           };
-          buildStackProject = scope.callPackage ./nix/build-project.nix {
+          buildStackProject = scope.callPackage ./pkgs/build-stack-project/default.nix {
             purifier = import (purifier + "/nix/lib") { inherit (final) lib; };
           };
         });
@@ -45,7 +45,7 @@
         default = (pkgsFor system).stack-purifier.cli;
         cli = self.packages.${system}.default;
       });
-      lib.stack-purifier.readLock = import ./nix/read-lock.nix { lib = nixpkgs.lib; };
+      lib.stack-purifier = import ./lib-overlays/default { lib = nixpkgs.lib; };
       apps = forAll (system: {
         default = {
           type = "app";

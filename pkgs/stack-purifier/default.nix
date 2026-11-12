@@ -19,12 +19,12 @@ in
 stdenvNoCC.mkDerivation {
   pname = "stack-purifier";
   version = "0.1.0";
-  src = ../.;
+  src = ../..;
   nativeBuildInputs = [ makeWrapper ];
   dontBuild = true;
   installPhase = ''
     mkdir -p "$out/bin" "$out/lib/stack-purifier"
-    cp -r stack_purifier nix "$out/lib/stack-purifier/"
+    cp -r stack_purifier nix lib-overlays pkgs "$out/lib/stack-purifier/"
     install -m755 bin/stack-purifier "$out/bin/stack-purifier"
     substituteInPlace "$out/lib/stack-purifier/nix/realize.nix" \
       --replace-fail '@nixpkgs@' '${nixpkgsSrc}' \

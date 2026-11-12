@@ -86,7 +86,7 @@ let
         mkdir -p "$HOME" "$out"
         cp -r --no-preserve=mode ${source} "$out/project"
         find "$out/project" -type f -exec touch -d @1 {} +
-        python3 ${./prepare-native-products.py} "$out" ${environment} ${spec} ${../stack_purifier}
+        python3 ${./prepare-native-products.py} "$out" ${environment} ${spec} ${../../stack_purifier}
         cd "$out/project"
         stack --no-nix --stack-yaml "$out/session/stack.yaml" build --test --bench --no-run-benchmarks
         python3 ${./install-native-products.py} "$out" ${spec} ${./inspect-native-products.hs} ${./native-setup.hs} ${lib.getBin stdenv.cc.libc}/bin/ldd

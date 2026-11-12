@@ -49,7 +49,7 @@ runCommand "purified-stack-environment"
   }
   ''
     export PYTHONDONTWRITEBYTECODE=1
-    python ${../stack_purifier/build.py} "$out" ${metadata} ${sources}
+    python ${../../stack_purifier/build.py} "$out" ${metadata} ${sources}
     ln -s ${toolchain} "$out/sdk"
     ln -s ${sources} "$out/downloads"
   ''

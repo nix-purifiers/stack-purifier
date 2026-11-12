@@ -15,11 +15,11 @@ let
     lockFile = /. + companion;
     stackLock = /. + nativeLock;
   };
-  lock = import ./read-lock.nix { inherit (pkgs) lib; } args;
+  lock = import ../lib-overlays/default/read-lock.nix { inherit (pkgs) lib; } args;
 in
 if target == "environment" then
-  pkgs.callPackage ./environment.nix { inherit purifier nativeStack toolchain; } { inherit lock; }
+  pkgs.callPackage ../pkgs/build-stack-project/environment.nix { inherit purifier nativeStack toolchain; } { inherit lock; }
 else if target == "release" then
-  (pkgs.callPackage ./build-project.nix { inherit purifier nativeStack toolchain; } args).release
+  (pkgs.callPackage ../pkgs/build-stack-project/default.nix { inherit purifier nativeStack toolchain; } args).release
 else
   throw "stack-purifier: unknown target"

@@ -36,7 +36,7 @@
 }:
 let
   lock = purifier.checkLock (
-    import ./read-lock.nix { inherit lib; } { inherit src lockFile stackLock; }
+    import ../../lib-overlays/default/read-lock.nix { inherit lib; } { inherit src lockFile stackLock; }
   );
   environment = import ./environment.nix {
     inherit
@@ -60,7 +60,7 @@ let
     import json,sys
     from pathlib import Path
     import yaml
-    sys.path.insert(0, ${builtins.toJSON "${../stack_purifier}"})
+    sys.path.insert(0, ${builtins.toJSON "${../../stack_purifier}"})
     from build import configuration
     root=Path.cwd()/'project';env=Path(sys.argv[1]);session=Path.cwd()/'session';session.mkdir()
     profile=json.loads((env/'metadata.json').read_text())['profile']
